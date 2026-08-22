@@ -984,6 +984,9 @@ class MainWindow(QMainWindow):
             self.log("%d model(s) could be downloaded but have not been."
                      % len(missing))
 
+        for spec in detection.models_to_fetch_yourself():
+            self.log(f"{spec.title} is not installed. {spec.obtain}")
+
         if not detection.usable_models():
             QMessageBox.information(
                 self, "No model available",

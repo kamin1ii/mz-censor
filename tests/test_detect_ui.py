@@ -371,3 +371,17 @@ def test_the_buttons_are_outside_the_scrolling_part(qapp):
 
     assert buttons is not None and scroll is not None
     assert not scroll.isAncestorOf(buttons)
+
+
+def test_a_model_you_have_to_fetch_yourself_is_explained_in_the_log(qapp, tmp_path, monkeypatch):
+    """Otherwise the better of the two is just silently absent."""
+    window = window_with(tmp_path)
+    ready(monkeypatch)
+    monkeypatch.setattr(detection, "models_to_fetch_yourself", lambda: [ERAX_MODEL])
+    monkeypatch.setattr(DetectDialog, "exec", lambda self: 0)
+
+    window.detect_regions()
+
+    logged = window.log_view.toPlainText()
+    assert ERAX_MODEL.title in logged
+    assert "ultralytics" in logged

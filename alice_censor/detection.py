@@ -61,6 +61,9 @@ class ModelSpec:
     threshold: float
     licence: str
     note: str
+    # How to get hold of it when there is nothing to download. Empty for a
+    # model that fetches itself.
+    obtain: str = ""
     inference_size: int = 640
 
     @property
@@ -84,11 +87,11 @@ ANIME_MODEL = ModelSpec(
     note="Trained on drawn art. Finds images the newer one misses.",
 )
 
-# Converted to ONNX from the PyTorch weights the authors publish, since
-# they publish no ONNX themselves. Apache-2.0 permits that with the licence
-# and attribution kept, which is what `licence` carries. The url is filled
-# in once the converted file is published somewhere to fetch it from; until
-# then a copy dropped into the models folder by hand still works.
+# The authors publish PyTorch weights and no ONNX, and this project does
+# not redistribute other people's model files. So there is nothing to
+# download, and anyone who wants this one converts it themselves and drops
+# the result into the models folder, which `obtain` explains and
+# model_is_present allows.
 ERAX_MODEL = ModelSpec(
     key="erax",
     title="EraX NSFW (2025)",
@@ -101,6 +104,16 @@ ERAX_MODEL = ModelSpec(
     threshold=0.15,
     licence="Apache-2.0, EraX-AI, Pham Dinh Thuc and Nguyen Anh Nguyen",
     note="Much better at penises, and the only one that knows anus.",
+    obtain=(
+        "Not downloadable here, because this project does not redistribute "
+        "other people's model files. To use it, convert the weights yourself:"
+        "\n\n"
+        "  pip install ultralytics\n"
+        "  yolo export model=erax_nsfw_yolo11s.pt format=onnx imgsz=640 opset=13"
+        "\n\n"
+        "taking erax_nsfw_yolo11s.pt from huggingface.co/erax-ai/EraX-NSFW-V1.0, "
+        "then put the .onnx in the models folder named erax-nsfw-v1.0-s.onnx."
+    ),
 )
 
 MODELS: dict[str, ModelSpec] = {spec.key: spec for spec in (ANIME_MODEL, ERAX_MODEL)}
@@ -192,6 +205,16 @@ def missing_models() -> list[ModelSpec]:
     """Models that could be fetched but have not been."""
     return [spec for spec in MODELS.values()
             if spec.can_be_downloaded and not model_is_present(spec)]
+
+
+def models_to_fetch_yourself() -> list[ModelSpec]:
+    """Models that are absent and that nothing here can fetch for you.
+
+    Worth naming rather than leaving out. Someone missing the better of the
+    two would otherwise have no idea it exists.
+    """
+    return [spec for spec in MODELS.values()
+            if spec.obtain and not model_is_present(spec)]
 
 
 def unavailable_reason() -> str | None:

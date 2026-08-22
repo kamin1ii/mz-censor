@@ -344,3 +344,28 @@ class _fake_response:
 
     def __exit__(self, *exc):
         return False
+
+
+# ===== the model this project will not redistribute
+
+
+def test_the_model_with_no_download_explains_how_to_get_it():
+    """Leaving the better of the two silently absent would be worse."""
+    assert ERAX_MODEL.can_be_downloaded is False
+    assert "ultralytics" in ERAX_MODEL.obtain
+    assert ERAX_MODEL.filename in ERAX_MODEL.obtain
+    assert "EraX-NSFW-V1.0" in ERAX_MODEL.obtain
+
+
+def test_it_is_listed_as_something_to_fetch_yourself_when_absent():
+    assert ERAX_MODEL in detection.models_to_fetch_yourself()
+    assert ANIME_MODEL not in detection.models_to_fetch_yourself()
+
+
+def test_it_stops_being_listed_once_it_is_there(tmp_path):
+    path = detection.model_path(ERAX_MODEL)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"pretend")
+
+    assert ERAX_MODEL not in detection.models_to_fetch_yourself()
+    assert ERAX_MODEL in detection.usable_models()
