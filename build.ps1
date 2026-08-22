@@ -6,17 +6,11 @@
 # that has no parent package once frozen. A build that is not launched is
 # not a build that works.
 #
-# Usage:  .\build.ps1  [-KeepBuildDir] [-SkipTests] [-WithDetection]
-#
-# -WithDetection builds AliceCensorDetect.exe instead, which carries
-# onnxruntime and numpy for automatic region detection and is roughly twice
-# the size. The two have different names so neither overwrites the other,
-# and both can sit in dist at once.
+# Usage:  .\build.ps1  [-KeepBuildDir] [-SkipTests]
 
 param(
     [switch]$KeepBuildDir,
-    [switch]$SkipTests,
-    [switch]$WithDetection
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,8 +38,7 @@ if (-not $SkipTests) {
 # A previous copy still running holds a lock on the exe, and PyInstaller
 # reports that as a bare PermissionError from os.remove that gives no hint
 # what is wrong. Far better to say so and clear it.
-$appName = if ($WithDetection) { "AliceCensorDetect" } else { "AliceCensor" }
-if ($WithDetection) { $env:ALICE_CENSOR_DETECT = "1" }
+$appName = "AliceCensor"
 
 $running = Get-Process $appName -ErrorAction SilentlyContinue
 if ($running) {
@@ -75,9 +68,10 @@ if (-not $alive) {
 }
 Stop-Process -Id $proc.Id -Force
 
-# Beyond starting, check the exe can reach the network. Downloading the
-# detection model needs https, which needs Python's OpenSSL, which a Qt
-# exclusion once matched by name and removed. The build looked fine.
+# Beyond starting, check the exe still has working https. Nothing in the
+# app reaches the network today, but a Qt exclusion once matched Python's
+# OpenSSL by name and removed it, and the build looked perfectly fine. This
+# is the cheapest guard against that whole class of mistake.
 Write-Host "==> Checking https works inside the bundle" -ForegroundColor Cyan
 & $python -c @"
 import sys

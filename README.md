@@ -252,6 +252,17 @@ The suite runs offscreen (`QT_QPA_PLATFORM=offscreen`) and needs neither a displ
 `alice.exe`, so it works in CI. Manifest fixtures captured from real archives live in
 `tests/fixtures/`.
 
+## Automatic detection, on a branch
+
+There is an experiment that looks through the images and proposes censor regions on its own,
+using two object detection models. It is not part of this app. It lives on the `autodetect`
+branch, with a build attached to the `detect-0.7.0` pre-release.
+
+It works, finding something in roughly nine of ten images that needed censoring in one real
+project, but it needs a machine learning runtime that nearly doubles the size of the exe and
+model files of tens of megabytes. That is a poor trade for something most people will not use, so
+the ordinary build leaves it out entirely.
+
 ## Notes and caveats
 
 - alice-tools is a separate project and is not bundled here. It is optional, and only used if you
