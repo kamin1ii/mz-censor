@@ -47,14 +47,21 @@ MODEL_SHA256 = "2c2524824d7d320c5619a0a73702a2e2186f619067c823d211e94f7cfe489cba
 MODEL_BYTES = 44586353
 MODEL_FILENAME = "anime_censor_detection_v1.0_s.onnx"
 
+# Every version of this model was measured against a real archive before
+# picking one. v0.10_s matches v1.0_s to within a point on everything and
+# is no smaller. v1.0_n is a quarter of the size and twice as fast but
+# doubles the false alarms, from 2.0% of scenery to 4.3%, which is the one
+# number worth protecting.
+
 # The model was trained near this size. Measured on a real archive, 640
 # beats 1024 on every class and runs in under half the time, so bigger is
 # not better here.
 INFERENCE_SIZE = 640
 
-# Below this the boxes stop being worth looking at. 0.25 was measured at
-# 81% of censored images found against 2.4% of scenery wrongly flagged.
-DEFAULT_THRESHOLD = 0.25
+# Below this the boxes stop being worth looking at. The model publishes 0.238
+# as where its F1 peaks, which measured on a real archive gives 82% of
+# censored images found against 2.0% of scenery wrongly flagged.
+DEFAULT_THRESHOLD = 0.238
 
 # Overlap for the slower second pass. Enough that a part straddling a tile
 # edge lands whole in a neighbouring one.
