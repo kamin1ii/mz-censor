@@ -33,6 +33,7 @@ from .formats.ald import AldArchive, AldEntry, read_ald, write_ald
 from .manifest import Manifest
 from .paths import basename
 from .project import ProjectState
+from .repack_progress import RepackProgress
 from .rendering import RenderError, render_layers
 
 # The only CG format alice-tools can encode that is also lossless. An
@@ -162,28 +163,40 @@ def repack_ald(
     rebuilt: list[AldEntry] = []
     with tempfile.TemporaryDirectory(prefix="alice-censor-qnt-") as tmp:
         work_dir = Path(tmp)
-        for path in manifest.paths():
-            if on_progress:
-                on_progress(path)
+        # Counted before the loop so the first log line can say how much
+        # work there is. Paths the archive does not have are left out of
+        # both totals, since they become an error rather than an image.
+        paths = list(manifest.paths())
+        present = [path for path in paths if _stem(path) in by_stem]
+        total = sum(1 for path in present if project.enabled_layers(path))
+        copies = len(present) - total
+        done = 0
 
+        for path in paths:
             entry = by_stem.get(_stem(path))
             if entry is None:
                 result.errors[path] = "listed in the manifest but not present in the archive"
                 continue
 
-            record = project.images.get(path)
-            layers = [layer for layer in record.layers if layer.enabled] if record else []
+            layers = project.enabled_layers(path)
             if not layers:
                 rebuilt.append(entry)
                 result.copied_count += 1
                 continue
 
+            # Reported here rather than at the top of the loop, so the log
+            # is a list of images being worked on instead of a list of
+            # every name in the manifest.
+            done += 1
+            if on_progress:
+                on_progress(RepackProgress(done, total, copies, path))
+
             try:
                 # Decode from the archive's own bytes rather than the
                 # extraction folder, so the repack does not depend on that
                 # folder still existing or still matching.
-                png_bytes = _decode_entry_to_image(tools, entry, work_dir)
-                rendered = render_layers(png_bytes, layers, sticker_resolver=sticker_resolver)
+                decoded = _decode_entry_to_image(tools, entry, work_dir)
+                rendered = render_layers(decoded, layers, sticker_resolver=sticker_resolver)
                 data = _encode_qnt(rendered)
             except (OSError, UnidentifiedImageError, RenderError, AliceToolsError) as e:
                 result.errors[path] = str(e)

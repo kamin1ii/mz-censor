@@ -207,6 +207,18 @@ class ProjectState:
             },
         )
 
+    def enabled_layers(self, path: str | None) -> list[CensorLayer]:
+        """The layers to draw for `path`, which is empty for most images.
+
+        Both repack paths ask this of every entry in the archive to decide
+        whether it needs decoding at all, so it answers for paths it has
+        never heard of rather than making each caller check first.
+        """
+        if not path:
+            return []
+        record = self.images.get(path)
+        return [layer for layer in record.layers if layer.enabled] if record else []
+
     def save(self, path: str | Path | None = None) -> None:
         target = Path(path) if path else self.project_file
         if target is None:

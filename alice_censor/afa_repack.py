@@ -48,6 +48,7 @@ from .formats.afa import (
 from .manifest import Manifest
 from .paths import resolve_fs_path
 from .project import ProjectState
+from .repack_progress import RepackProgress
 from .rendering import RenderError, render_layers
 
 # Edited images are written back as QNT whatever they started as. It is
@@ -134,7 +135,7 @@ def repack_afa(
         outgoing: list = [None] * len(plan)
         todo = []
         for index, (entry, path) in enumerate(plan):
-            layers = _enabled_layers(project, path)
+            layers = project.enabled_layers(path)
             if layers:
                 todo.append((index, path, layers))
             else:
@@ -146,6 +147,7 @@ def repack_afa(
             extract_dir=extract_dir,
             sticker_resolver=sticker_resolver,
             on_progress=on_progress,
+            copies=result.copied_count,
             workers=workers,
         )
 
@@ -176,6 +178,7 @@ def _censor_all(
     extract_dir: Path | None,
     sticker_resolver,
     on_progress,
+    copies: int,
     workers: int,
 ) -> None:
     """Render and re-encode every image that has layers.
@@ -199,10 +202,12 @@ def _censor_all(
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="censor") as pool:
         for start in range(0, len(todo), wave):
             pending = {}
-            for index, path, layers in todo[start:start + wave]:
+            for done, (index, path, layers) in enumerate(
+                todo[start:start + wave], start=start + 1
+            ):
                 entry = plan[index][0]
                 if on_progress:
-                    on_progress(path)
+                    on_progress(RepackProgress(done, len(todo), copies, path))
                 pending[pool.submit(
                     _censor_one, reader.read(entry), entry, path, layers,
                     extract_dir, sticker_resolver,
@@ -238,13 +243,6 @@ def _censor_one(
     base = _load_image(data, entry, path, extract_dir)
     rendered = render_layers(base, layers, sticker_resolver=sticker_resolver)
     return qnt.encode(rendered)
-
-
-def _enabled_layers(project: ProjectState, path: str | None):
-    if not path:
-        return []
-    record = project.images.get(path)
-    return [layer for layer in record.layers if layer.enabled] if record else []
 
 
 def _load_image(

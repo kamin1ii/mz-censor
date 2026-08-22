@@ -27,6 +27,7 @@ from ..manifest import Manifest, ManifestFormat, parse_manifest
 from ..paths import resolve_fs_path
 from ..project import ImageRecord, ImageStatus, ProjectState
 from ..ald_repack import find_sibling_volumes, repack_ald_in_place, verify_ald
+from ..repack_progress import describe
 from ..scanning import scan_and_sync
 from ..session import OpenProject
 from ..share import BundleError, apply_bundle, export_bundle, read_bundle
@@ -899,7 +900,7 @@ class MainWindow(QMainWindow):
                 session.manifest,
                 extract_dir=session.project.extract_dir,
                 sticker_resolver=make_sticker_resolver(session.project.sticker_dir),
-                on_progress=lambda path: on_output(f"reading {path}"),
+                on_progress=lambda progress: on_output(describe(progress)),
             )
 
         self._run_worker(job, on_success=self._on_native_afa_repack_done)
@@ -908,7 +909,7 @@ class MainWindow(QMainWindow):
         self.repack_button.setEnabled(True)
         lines = [
             f"Rebuilt {result.archive_path}",
-            f"{len(result.rebuilt_paths)} image(s) censored and re-encoded, "
+            f"{len(result.rebuilt_paths)} image(s) processed and re-encoded, "
             f"{result.copied_count} copied unchanged, byte for byte.",
         ]
         if result.converted_formats:
@@ -964,7 +965,7 @@ class MainWindow(QMainWindow):
                 session.manifest,
                 session.tools,
                 sticker_resolver=make_sticker_resolver(session.project.sticker_dir),
-                on_progress=lambda path: on_output(f"reading {path}"),
+                on_progress=lambda progress: on_output(describe(progress)),
             )
 
         self._run_worker(job, on_success=self._on_ald_repack_done)
@@ -974,7 +975,7 @@ class MainWindow(QMainWindow):
         archive_path = result.archive_path
         lines = [
             f"Rebuilt {archive_path}",
-            f"{len(result.rebuilt_paths)} image(s) censored and re-encoded, "
+            f"{len(result.rebuilt_paths)} image(s) processed and re-encoded, "
             f"{result.copied_count} copied unchanged, byte for byte.",
         ]
         if result.converted_formats:

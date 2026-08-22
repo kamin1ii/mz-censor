@@ -282,3 +282,31 @@ def test_one_image_failing_does_not_take_the_batch_with_it(tmp_path):
 
     assert list(result.errors) == ["broken.png"]
     assert len(result.rebuilt_paths) == 4, "the other four still got done"
+
+
+def test_progress_is_reported_only_for_images_that_need_work(tmp_path):
+    """Copies are the overwhelming majority and cost nothing, so a line
+    each would bury the images actually being worked on."""
+    archive = _archive(tmp_path)
+    seen = []
+
+    repack_afa(_project(edited={"second.png"}), _manifest(tmp_path, archive),
+               source_archive=archive, output_archive=tmp_path / "out.afa",
+               on_progress=seen.append)
+
+    assert [p.path for p in seen] == ["second.png"]
+    assert (seen[0].done, seen[0].total, seen[0].copies) == (1, 1, 2)
+
+
+def test_progress_counts_up_across_the_run(tmp_path):
+    archive = _archive(tmp_path)
+    seen = []
+
+    repack_afa(_project(edited=set(NAMES and {"first.png", "second.png", "third.png"})),
+               _manifest(tmp_path, archive),
+               source_archive=archive, output_archive=tmp_path / "out.afa",
+               on_progress=seen.append, workers=2)
+
+    assert [p.done for p in seen] == [1, 2, 3]
+    assert {p.total for p in seen} == {3}
+    assert {p.copies for p in seen} == {0}
