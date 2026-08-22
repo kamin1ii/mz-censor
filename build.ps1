@@ -6,11 +6,17 @@
 # that has no parent package once frozen. A build that is not launched is
 # not a build that works.
 #
-# Usage:  .\build.ps1  [-KeepBuildDir] [-SkipTests]
+# Usage:  .\build.ps1  [-KeepBuildDir] [-SkipTests] [-WithDetection]
+#
+# -WithDetection builds AliceCensorDetect.exe instead, which carries
+# onnxruntime and numpy for automatic region detection and is roughly twice
+# the size. The two have different names so neither overwrites the other,
+# and both can sit in dist at once.
 
 param(
     [switch]$KeepBuildDir,
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$WithDetection
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,7 +44,10 @@ if (-not $SkipTests) {
 # A previous copy still running holds a lock on the exe, and PyInstaller
 # reports that as a bare PermissionError from os.remove that gives no hint
 # what is wrong. Far better to say so and clear it.
-$running = Get-Process AliceCensor -ErrorAction SilentlyContinue
+$appName = if ($WithDetection) { "AliceCensorDetect" } else { "AliceCensor" }
+if ($WithDetection) { $env:ALICE_CENSOR_DETECT = "1" }
+
+$running = Get-Process $appName -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "==> Closing $($running.Count) running AliceCensor process(es) holding the exe" -ForegroundColor Yellow
     $running | Stop-Process -Force
@@ -49,7 +58,7 @@ Write-Host "==> Building" -ForegroundColor Cyan
 & $python -m PyInstaller --noconfirm --clean alice-censor.spec
 if ($LASTEXITCODE -ne 0) { Write-Error "PyInstaller failed" }
 
-$exe = Join-Path $PSScriptRoot "dist\AliceCensor.exe"
+$exe = Join-Path $PSScriptRoot "dist\$appName.exe"
 if (-not (Test-Path $exe)) { Write-Error "PyInstaller reported success but produced no exe" }
 
 Write-Host "==> Verifying it launches" -ForegroundColor Cyan
@@ -76,7 +85,7 @@ $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
 # intact. The exe is unsigned, so this is the only integrity check there
 # is. CI computes the same hash on a clean machine and attaches it to the
 # release, so the two are worth comparing when a build looks wrong.
-Set-Content -Path "$exe.sha256" -Value "$hash *AliceCensor.exe" -Encoding ascii
+Set-Content -Path "$exe.sha256" -Value "$hash *$appName.exe" -Encoding ascii
 Write-Host ""
 Write-Host ("==> Built {0}  ({1:N1} MB)" -f $exe, $size) -ForegroundColor Green
 Write-Host ("    SHA256 {0}" -f $hash) -ForegroundColor Green

@@ -9,11 +9,18 @@
 # cargo-culted. Anything removed here that turns out to be needed shows up
 # as a missing DLL on launch, not as a subtle bug.
 
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
-APP_NAME = "AliceCensor"
+# Two builds come out of this one file. The plain one is small and has no
+# automatic detection in it. Setting ALICE_CENSOR_DETECT=1 keeps onnxruntime
+# and numpy, which roughly triples the size, and produces a separately named
+# exe so the two never overwrite each other.
+WITH_DETECTION = os.environ.get("ALICE_CENSOR_DETECT") == "1"
+
+APP_NAME = "AliceCensorDetect" if WITH_DETECTION else "AliceCensor"
 ICON = Path("alice_censor/assets/icon.ico")
 
 # Qt modules with no part in a QtWidgets app. QtWebEngineCore alone is a
@@ -40,11 +47,15 @@ EXCLUDED_QT_MODULES = [
 EXCLUDES = EXCLUDED_QT_MODULES + [
     # Pulled in by Pillow's optional plugins and by setuptools, never by us.
     "tkinter", "unittest", "pydoc", "doctest",
-    "matplotlib", "numpy", "scipy", "pandas",
+    "matplotlib", "scipy", "pandas",
     "pytest", "_pytest", "pygments",
     # Pillow's AVIF codec is 7.5 MB on its own. The sticker library and the
     # archives this reads are png, jpg, webp, bmp, gif and qnt, never avif.
     "PIL._avif", "PIL.AvifImagePlugin",
+    # numpy and onnxruntime are only wanted by the detection feature, which
+    # reports itself unavailable without them rather than breaking. Together
+    # they are most of 100 MB, so the plain build leaves them out.
+    *([] if WITH_DETECTION else ["numpy", "onnxruntime", "onnx"]),
     # Repacking encodes images on a thread pool, and importing
     # concurrent.futures drags in the process pool with it. Nothing here
     # ever touches ProcessPoolExecutor, and the package only imports it
