@@ -6,7 +6,7 @@ A desktop app for censoring CG images extracted from AliceSoft visual novels, bu
 Doing this by hand means running `ar extract`, opening a folder of a thousand or more PNGs,
 finding the ones that need work, editing them in an image editor, remembering to clear
 alice-tools' conversion cache, and running `ar pack`. Alice Censor wraps that whole loop in one
-window: extract, review in a thumbnail gallery, draw censor regions with live preview, repack,
+window. Extract, review in a thumbnail gallery, draw censor regions with live preview, repack,
 and verify the result.
 
 Requires Python 3.11 or newer. **alice.exe is not needed.** Alice Censor reads and writes the
@@ -78,7 +78,7 @@ nightly alice.exe and not 0.13.0.
 ## Sharing a project
 
 **File > Share Project…** writes a zip holding your review statuses, every censor layer you have
-drawn, and the stickers those layers use. No images and no paths, so it stays small: a real
+drawn, and the stickers those layers use. No images and no paths, so it stays small. A real
 project with 771 layers across 529 images comes to about 5 MB.
 
 **File > Open Shared Project…** applies one on top of the project you have open. Images are
@@ -194,7 +194,7 @@ instantly.
 A project is a single JSON file next to your working folder. It holds the paths needed to reopen
 the project, per image review status, and the censor layers you have drawn, but no image data.
 The extracted images stay pristine. For an `.afa`, censored output is rendered into a separate
-folder at export time; for an `.ald`, the archive is rebuilt straight from the backup and there is
+folder at export time. For an `.ald`, the archive is rebuilt straight from the backup and there is
 no export folder at all. Either way you can delete the working folder and regenerate it by
 re-extracting without losing a single review decision or region.
 
@@ -215,7 +215,7 @@ alice_censor/
   export.py         The alice-tools route instead, an output folder for ar pack
   manifest.py       Parser and writer for alice-tools ALICEPACK manifests
   alice_tools.py    Subprocess wrapper over the alice CLI, archive backups
-  project.py        The .acproj.json schema: statuses, groups, censor layers
+  project.py        The .acproj.json schema, statuses, groups and censor layers
   scanning.py       Reconciles a manifest against saved state and files on disk
   grouping.py       Scene grouping, by naming convention or numeric proximity
   rendering.py      The single render path shared by preview, thumbnails and export
@@ -240,7 +240,7 @@ drift from what ends up in the archive.
 
 `formats/` imports nothing from the rest of the app, so it could be lifted out into a library of
 its own. `formats/__init__.py` is the only place that decides which format a given lump of bytes
-is; nothing else tests magic numbers for itself.
+is, and nothing else tests magic numbers for itself.
 
 ## Development
 
@@ -254,16 +254,11 @@ The suite runs offscreen (`QT_QPA_PLATFORM=offscreen`) and needs neither a displ
 
 ## Automatic detection, on a branch
 
-There is an experiment that looks through the images and proposes censor regions on its own,
-using two object detection models. It is not part of this app. It lives on the `autodetect`
-branch, with a build attached to the `detect-0.7.0` pre-release.
+An experiment that proposes censor regions on its own, using two object detection models. It
+lives on the `autodetect` branch, with a build on the `detect-0.7.0` pre-release.
 
-It is not accurate enough to lean on. In one real project it found something in roughly nine of
-ten images that had been censored by hand, which sounds better than it is: it still misses
-things, still boxes the occasional wall, and everything it proposes has to be looked at anyway.
-On top of that it needs a machine learning runtime that nearly doubles the size of the exe, and
-model files of tens of megabytes. Not good enough to rely on and not small, so the ordinary build
-leaves it out.
+It is not accurate enough to lean on, and it needs a machine learning runtime that nearly doubles
+the size of the exe plus models of tens of megabytes. The ordinary build leaves it out.
 
 ## Notes and caveats
 
@@ -274,7 +269,7 @@ leaves it out.
   responds to one by printing its usage text, extracting nothing and reporting success.
 - The built in support covers QNT, AJP, DCF and PMS images inside .afa and .ald archives, which is
   everything in the archives this was built against. An archive carrying something else needs
-  alice.exe. The formats were checked entry by entry against it: all 3683 QNT and DCF images in a
+  alice.exe. The formats were checked entry by entry against it. All 3683 QNT and DCF images in a
   772 MB archive decode pixel for pixel the same, as does the transparency of all 920 AJP images
   in another, and a rebuilt archive with
   nothing edited comes out byte for byte identical to the original.
