@@ -257,8 +257,9 @@ The suite runs offscreen (`QT_QPA_PLATFORM=offscreen`) and needs neither a displ
 An experiment that proposes censor regions on its own, using two object detection models. It
 lives on the `autodetect` branch, with a build on the `detect-0.7.0` pre-release.
 
-It is not accurate enough to lean on, and it needs a machine learning runtime that nearly doubles
-the size of the exe plus models of tens of megabytes. The ordinary build leaves it out.
+It works well, just not accurately enough to rely on without checking every region it proposes.
+It also needs a machine learning runtime that nearly doubles the size of the exe, plus models of
+tens of megabytes. The ordinary build leaves it out.
 
 ## Notes and caveats
 
