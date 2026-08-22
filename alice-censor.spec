@@ -10,13 +10,20 @@
 # as a missing DLL on launch, not as a subtle bug.
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
-# Which bundled files survive. Kept in its own module so the rule can
-# be tested, after one of its patterns quietly matched Python's copy
-# of OpenSSL as well as Qt's.
+# Which bundled files survive. Kept in its own module so the rule can be
+# tested, after one of its patterns quietly matched Python's copy of OpenSSL
+# as well as Qt's.
+#
+# The spec's own folder has to go on the path first. PyInstaller runs this
+# with exec rather than importing it, and the console script entry point
+# does not put the working directory on sys.path the way python -m does, so
+# locally it resolved and on a runner it did not.
+sys.path.insert(0, SPECPATH)
 from build_filters import keep_binary
 
 # Two builds come out of this one file. The plain one is small and has no
