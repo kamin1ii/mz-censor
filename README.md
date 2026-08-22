@@ -258,10 +258,12 @@ There is an experiment that looks through the images and proposes censor regions
 using two object detection models. It is not part of this app. It lives on the `autodetect`
 branch, with a build attached to the `detect-0.7.0` pre-release.
 
-It works, finding something in roughly nine of ten images that needed censoring in one real
-project, but it needs a machine learning runtime that nearly doubles the size of the exe and
-model files of tens of megabytes. That is a poor trade for something most people will not use, so
-the ordinary build leaves it out entirely.
+It is not accurate enough to lean on. In one real project it found something in roughly nine of
+ten images that had been censored by hand, which sounds better than it is: it still misses
+things, still boxes the occasional wall, and everything it proposes has to be looked at anyway.
+On top of that it needs a machine learning runtime that nearly doubles the size of the exe, and
+model files of tens of megabytes. Not good enough to rely on and not small, so the ordinary build
+leaves it out.
 
 ## Notes and caveats
 
