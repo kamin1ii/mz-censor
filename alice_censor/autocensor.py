@@ -18,7 +18,8 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from .detection import Detection, Detector, DetectorUnavailable
+from . import detection
+from .detection import Detection, DetectorUnavailable, detect_with
 from .paths import resolve_fs_path
 from .project import CensorLayer, ImageRecord, ImageStatus, LayerType, ProjectState
 
@@ -26,15 +27,21 @@ from .project import CensorLayer, ImageRecord, ImageStatus, LayerType, ProjectSt
 # heavier hand than nipples by default, which is the usual convention, and
 # every part of this is meant to be overridden.
 DEFAULT_STYLES: dict[str, tuple[LayerType, dict]] = {
-    "nipple_f": (LayerType.PIXELATE, {"block_size": 10}),
-    "penis": (LayerType.PIXELATE, {"block_size": 18}),
-    "pussy": (LayerType.PIXELATE, {"block_size": 18}),
+    detection.NIPPLE: (LayerType.PIXELATE, {"block_size": 10}),
+    detection.PENIS: (LayerType.PIXELATE, {"block_size": 18}),
+    detection.VAGINA: (LayerType.PIXELATE, {"block_size": 18}),
+    detection.ANUS: (LayerType.PIXELATE, {"block_size": 14}),
 }
 
 # A detector box hugs what it found. A censor usually wants to cover a
 # little more than that, so boxes are grown by this fraction of their own
 # size before becoming layers.
 DEFAULT_PADDING = 0.15
+
+# Two regions overlapping by more than this are the same thing. Used when
+# pooling a scene group, so a nipple found in four frames of six does not
+# become four boxes on the two that were missing it.
+SAME_REGION = 0.5
 
 
 @dataclass
@@ -53,7 +60,7 @@ class ScanResult:
 
 
 def layer_for(
-    detection: Detection,
+    found: Detection,
     styles: dict[str, tuple[LayerType, dict]] | None = None,
     padding: float = DEFAULT_PADDING,
 ) -> CensorLayer | None:
@@ -62,14 +69,14 @@ def layer_for(
     A style of None is how a class gets turned off, so somebody who does
     not want nipples censored simply removes that entry.
     """
-    chosen = (styles or DEFAULT_STYLES).get(detection.label)
+    chosen = (styles or DEFAULT_STYLES).get(found.label)
     if chosen is None:
         return None
     layer_type, params = chosen
     return CensorLayer(
         id=uuid.uuid4().hex[:12],
         type=layer_type,
-        rect=_padded(detection.rect, padding),
+        rect=_padded(found.rect, padding),
         params=dict(params),
         enabled=False,
     )
@@ -90,8 +97,8 @@ def scan_project(
     project: ProjectState,
     paths,
     *,
-    detector: Detector,
-    threshold: float | None = None,
+    detectors,
+    thresholds: dict[str, float] | None = None,
     deep: bool = False,
     styles: dict[str, tuple[LayerType, dict]] | None = None,
     padding: float = DEFAULT_PADDING,
@@ -101,7 +108,10 @@ def scan_project(
 
     Reads the extracted PNGs rather than the archive, because that is what
     the gallery is showing and what the editor draws on, so what the
-    detector saw is what you will see.
+    detectors saw is what you will see.
+
+    `detectors` is a list, since the two models are better at different
+    things and pooling them beats either alone.
     """
     result = ScanResult()
     extract_dir = Path(project.extract_dir) if project.extract_dir else None
@@ -118,10 +128,8 @@ def scan_project(
         try:
             with Image.open(source) as opened:
                 image = opened.convert("RGB")
-                found = detector.detect(
-                    image,
-                    **({"threshold": threshold} if threshold is not None else {}),
-                    deep=deep,
+                found = detect_with(
+                    detectors, image, thresholds=thresholds, deep=deep
                 )
         except (OSError, UnidentifiedImageError) as exc:
             result.errors[path] = str(exc)
@@ -161,3 +169,56 @@ def apply_scan(
         if flag and record.status == ImageStatus.UNREVIEWED:
             record.status = ImageStatus.FLAGGED
     return added
+
+
+def spread_across_scene_groups(result: ScanResult, groups, *, within=None) -> int:
+    """Give every image in a scene group the same set of censor regions.
+
+    A scene group is one CG in its variations, the same drawing with a
+    different expression or a later moment. Each is read on its own, so the
+    detectors can easily find a nipple in H03 and miss it in H04, which
+    leaves a scene censored in patches. That looks worse than not censoring
+    it at all, and it is the kind of gap only noticed in game.
+
+    So whatever was found anywhere in a group is pooled and given to every
+    member of it. Rects are fractions of image size and the members of a
+    group are the same composition, so a region from one lands in the right
+    place on the rest.
+
+    Returns how many regions were added.
+    """
+    added = 0
+    for group in groups:
+        members = [m for m in group.members if within is None or m in within]
+        if len(members) < 2:
+            continue
+
+        pooled: list[CensorLayer] = []
+        for member in members:
+            for layer in result.proposed.get(member, []):
+                if not _already_covered(layer, pooled):
+                    pooled.append(layer)
+        if not pooled:
+            continue
+
+        for member in members:
+            have = result.proposed.setdefault(member, [])
+            for layer in pooled:
+                if _already_covered(layer, have):
+                    continue
+                have.append(replace(layer, id=uuid.uuid4().hex[:12]))
+                added += 1
+            if member in result.skipped:
+                result.skipped.remove(member)
+    return added
+
+
+def _already_covered(layer: CensorLayer, existing) -> bool:
+    """Whether something in `existing` is already the same region.
+
+    Without this, a nipple found in four frames of six would put four
+    boxes on the two that were missing it.
+    """
+    return any(other.type == layer.type
+               and detection.overlap(layer.rect, other.rect) > SAME_REGION
+               for other in existing)

@@ -2,7 +2,7 @@
 
 Deliberately a dialog rather than a menu item that just runs. A scan takes
 minutes over a whole archive, it decides what gets drawn over a few hundred
-pictures, and how heavy each class should be is a matter of taste. All of
+pictures, and how heavy each part should be is a matter of taste. All of
 that is worth a moment's thought before it starts.
 """
 
@@ -21,15 +21,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from .. import detection
 from ..autocensor import DEFAULT_PADDING, DEFAULT_STYLES
-from ..detection import DEFAULT_THRESHOLD, LABELS
 from ..project import LayerType
 
-# What the three classes are called in front of a person.
-LABEL_NAMES = {
-    "nipple_f": "Nipples",
-    "penis": "Penis",
-    "pussy": "Vagina",
+# What each kind is called in front of a person.
+KIND_NAMES = {
+    detection.NIPPLE: "Nipples",
+    detection.PENIS: "Penis",
+    detection.VAGINA: "Vagina",
+    detection.ANUS: "Anus",
 }
 
 # The layer types worth putting over a detection. A sticker needs choosing
@@ -46,6 +47,7 @@ SCOPES = [
     ("flagged", "Only images flagged for censoring"),
 ]
 
+# Which parameter each layer type calls its strength, and a sane range.
 STRENGTHS = {
     LayerType.PIXELATE: ("block_size", 4, 64),
     LayerType.BLUR: ("radius", 2, 100),
@@ -53,26 +55,17 @@ STRENGTHS = {
 
 
 class DetectDialog(QDialog):
-    """Collects the scope, the threshold and a style per class."""
+    """Collects the scope, which models to use, and a style per kind."""
 
-    def __init__(self, parent=None, *, image_count: int = 0):
+    def __init__(self, parent=None, *, image_count: int = 0, models=None):
         super().__init__(parent)
         self.setWindowTitle("Detect Censor Regions")
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(500)
+        self._models = list(models if models is not None else detection.usable_models())
 
         self.scope_combo = QComboBox()
         for key, text in SCOPES:
             self.scope_combo.addItem(text, key)
-
-        self.threshold_spin = QDoubleSpinBox()
-        self.threshold_spin.setRange(0.05, 0.95)
-        self.threshold_spin.setSingleStep(0.05)
-        self.threshold_spin.setValue(DEFAULT_THRESHOLD)
-        self.threshold_spin.setToolTip(
-            "Lower finds more and gets more wrong. Measured on a real project, "
-            "0.25 found four fifths of the images that needed work and put a box "
-            "on about one in forty that did not."
-        )
 
         self.padding_spin = QSpinBox()
         self.padding_spin.setRange(0, 100)
@@ -90,41 +83,80 @@ class DetectDialog(QDialog):
             "than a whole archive."
         )
 
+        self.group_checkbox = QCheckBox("Give every image in a scene group the same regions")
+        self.group_checkbox.setChecked(True)
+        self.group_checkbox.setToolTip(
+            "A scene group is one CG in its variations. Read on their own, the "
+            "models can find something in one frame and miss it in the next, "
+            "which leaves a scene censored in patches. This pools whatever was "
+            "found anywhere in the group and gives it to all of them."
+        )
+
         top = QFormLayout()
         top.addRow("Scan:", self.scope_combo)
-        top.addRow("Confidence:", self.threshold_spin)
         top.addRow("Grow regions by:", self.padding_spin)
+        top.addRow(self.group_checkbox)
         top.addRow(self.deep_checkbox)
 
-        self._class_rows = {}
-        classes = QGroupBox("What to draw over each thing found")
-        class_form = QFormLayout(classes)
-        for label in LABELS:
-            enabled = QCheckBox()
-            enabled.setChecked(label in DEFAULT_STYLES)
-            kind = QComboBox()
+        models_box = QGroupBox("Models to use")
+        models_form = QFormLayout(models_box)
+        self._model_rows = {}
+        if not self._models:
+            models_form.addRow(QLabel("None downloaded yet."))
+        for spec in self._models:
+            enabled = QCheckBox("Use")
+            enabled.setChecked(True)
+            threshold = QDoubleSpinBox()
+            threshold.setRange(0.05, 0.95)
+            threshold.setSingleStep(0.01)
+            # Three places, because a model's own tuned figure can be
+            # something like 0.238 and rounding it here would quietly
+            # change the setting it publishes as its best.
+            threshold.setDecimals(3)
+            threshold.setValue(spec.threshold)
+            threshold.setToolTip(
+                "Lower finds more and gets more wrong. This is where the "
+                "model's own accuracy peaks."
+            )
+            holder = QGroupBox(spec.title)
+            inner = QFormLayout(holder)
+            inner.addRow(enabled)
+            inner.addRow("Confidence:", threshold)
+            note = QLabel(spec.note)
+            note.setWordWrap(True)
+            note.setStyleSheet("color: gray;")
+            inner.addRow(note)
+            models_form.addRow(holder)
+            self._model_rows[spec.key] = (enabled, threshold)
+
+        self._kind_rows = {}
+        kinds = QGroupBox("What to draw over each thing found")
+        kind_form = QFormLayout(kinds)
+        for kind in detection.KINDS:
+            enabled = QCheckBox("Include")
+            enabled.setChecked(kind in DEFAULT_STYLES)
+            kind_combo = QComboBox()
             for layer_type, text in OFFERED:
-                kind.addItem(text, layer_type)
+                kind_combo.addItem(text, layer_type)
             strength = QSpinBox()
             strength.setRange(1, 100)
 
             default_type, default_params = DEFAULT_STYLES.get(
-                label, (LayerType.PIXELATE, {"block_size": 12})
+                kind, (LayerType.PIXELATE, {"block_size": 12})
             )
-            kind.setCurrentIndex(kind.findData(default_type))
-            self._class_rows[label] = (enabled, kind, strength)
-            self._sync_strength(label, default_params)
-            kind.currentIndexChanged.connect(
-                lambda _i, name=label: self._sync_strength(name, None)
+            kind_combo.setCurrentIndex(kind_combo.findData(default_type))
+            self._kind_rows[kind] = (enabled, kind_combo, strength)
+            self._sync_strength(kind, default_params)
+            kind_combo.currentIndexChanged.connect(
+                lambda _i, name=kind: self._sync_strength(name, None)
             )
 
-            enabled.setText("Include")
-            holder = QGroupBox(LABEL_NAMES.get(label, label))
+            holder = QGroupBox(KIND_NAMES.get(kind, kind))
             inner = QFormLayout(holder)
             inner.addRow(enabled)
-            inner.addRow("Censor with:", kind)
+            inner.addRow("Censor with:", kind_combo)
             inner.addRow("Strength:", strength)
-            class_form.addRow(holder)
+            kind_form.addRow(holder)
 
         note = QLabel(
             f"{image_count} image(s) in scope. Nothing is applied on its own: "
@@ -140,39 +172,51 @@ class DetectDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
-        layout.addWidget(classes)
+        layout.addWidget(models_box)
+        layout.addWidget(kinds)
         layout.addWidget(note)
         layout.addWidget(buttons)
 
-    def _sync_strength(self, label: str, params: dict | None) -> None:
+    def _sync_strength(self, kind: str, params: dict | None) -> None:
         """Point the strength box at whatever the chosen layer type calls it."""
-        _, kind, strength = self._class_rows[label]
-        layer_type = kind.currentData()
+        _, kind_combo, strength = self._kind_rows[kind]
+        layer_type = kind_combo.currentData()
         key, low, high = STRENGTHS.get(layer_type, (None, 1, 100))
         strength.setEnabled(key is not None)
         if key is None:
             return
         strength.setRange(low, high)
-        default = DEFAULT_STYLES.get(label, (None, {}))[1]
+        default = DEFAULT_STYLES.get(kind, (None, {}))[1]
         strength.setValue(int((params or default).get(key, low * 3)))
 
+    def chosen_models(self) -> list:
+        return [spec for spec in self._models
+                if self._model_rows[spec.key][0].isChecked()]
+
+    def thresholds(self) -> dict:
+        return {key: threshold.value()
+                for key, (enabled, threshold) in self._model_rows.items()
+                if enabled.isChecked()}
+
     def styles(self) -> dict:
-        """The per class choice, in the shape autocensor wants."""
+        """The per kind choice, in the shape autocensor wants."""
         out = {}
-        for label, (enabled, kind, strength) in self._class_rows.items():
+        for kind, (enabled, kind_combo, strength) in self._kind_rows.items():
             if not enabled.isChecked():
                 continue
-            layer_type = kind.currentData()
+            layer_type = kind_combo.currentData()
             key = STRENGTHS.get(layer_type, (None,))[0]
             params = {key: strength.value()} if key else {"color": "#000000"}
-            out[label] = (layer_type, params)
+            out[kind] = (layer_type, params)
         return out
 
     def settings(self) -> dict:
         return {
             "scope": self.scope_combo.currentData(),
-            "threshold": self.threshold_spin.value(),
+            "models": self.chosen_models(),
+            "thresholds": self.thresholds(),
             "padding": self.padding_spin.value() / 100,
             "deep": self.deep_checkbox.isChecked(),
+            "keep_groups_consistent": self.group_checkbox.isChecked(),
             "styles": self.styles(),
         }

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..afa_repack import repack_afa_in_place, verify_afa
-from ..autocensor import apply_scan, scan_project
+from ..autocensor import apply_scan, scan_project, spread_across_scene_groups
 from ..alice_tools import AliceTools, AliceToolsOutdated
 from ..editor.editor_dialog import RegionEditorDialog
 from .. import detection
@@ -24,7 +24,7 @@ from ..export import render_export
 from ..extraction import extract_archive
 from ..gallery.gallery_model import GalleryModel
 from ..gallery.gallery_widget import GalleryWidget
-from ..grouping import find_explicit_by_naming
+from ..grouping import compute_groups, find_explicit_by_naming
 from ..manifest import Manifest, ManifestFormat, parse_manifest
 from ..paths import resolve_fs_path
 from ..project import ImageRecord, ImageStatus, ProjectState
@@ -886,10 +886,10 @@ class MainWindow(QMainWindow):
     def detect_regions(self) -> None:
         """Look through the images and propose censor layers.
 
-        Everything it proposes arrives switched off. It finds roughly four
-        in five of the images that need work and occasionally boxes a wall,
-        so a pass that edited several thousand images by itself would be
-        worse than no pass at all.
+        Everything it proposes arrives switched off. Between them the two
+        models find roughly nine in ten of the images that need work, and
+        occasionally box a wall, so a pass that edited several thousand
+        images by itself would be worse than no pass at all.
         """
         if self.session is None:
             return
@@ -898,41 +898,57 @@ class MainWindow(QMainWindow):
 
         session = self.session
         paths = list(session.manifest.paths())
-        dialog = DetectDialog(self, image_count=len(paths))
+        dialog = DetectDialog(self, image_count=len(paths),
+                              models=detection.usable_models())
         if not dialog.exec():
             return
         settings = dialog.settings()
+
+        if not settings["models"]:
+            QMessageBox.information(
+                self, "No model chosen",
+                "Every model is unticked, so there is nothing to detect with.")
+            return
         if not settings["styles"]:
             QMessageBox.information(
                 self, "Nothing to look for",
-                "Every kind of region is unticked, so there is nothing to detect.",
-            )
+                "Every kind of region is unticked, so there is nothing to detect.")
             return
 
         chosen = self._paths_in_scope(paths, settings["scope"])
         if not chosen:
             QMessageBox.information(
-                self, "Nothing in scope", "No images match that choice."
-            )
+                self, "Nothing in scope", "No images match that choice.")
             return
 
-        self.log(f"Looking through {len(chosen)} image(s) for regions to censor...")
+        names = ", ".join(spec.title for spec in settings["models"])
+        self.log(f"Looking through {len(chosen)} image(s) with {names}...")
         self._detect_action.setEnabled(False)
+        groups = self._scene_groups() if settings["keep_groups_consistent"] else None
 
         def job(on_output):
-            detector = detection.Detector()
-            return scan_project(
+            detectors = [detection.Detector(spec) for spec in settings["models"]]
+            result = scan_project(
                 session.project,
                 chosen,
-                detector=detector,
-                threshold=settings["threshold"],
+                detectors=detectors,
+                thresholds=settings["thresholds"],
                 deep=settings["deep"],
                 styles=settings["styles"],
                 padding=settings["padding"],
                 on_progress=lambda path: on_output(f"looking at {path}"),
             )
+            if groups is not None:
+                on_output("evening out each scene group")
+                spread_across_scene_groups(result, groups, within=set(chosen))
+            return result
 
         self._run_worker(job, on_success=self._on_detect_done)
+
+    def _scene_groups(self):
+        """The scene groups of the open project, as the gallery sees them."""
+        assert self.session is not None
+        return list(compute_groups(self.session.manifest).values())
 
     def _paths_in_scope(self, paths, scope: str) -> list[str]:
         assert self.session is not None
@@ -946,42 +962,57 @@ class MainWindow(QMainWindow):
         return list(paths)
 
     def _detector_ready(self) -> bool:
-        """Make sure there is a runtime and a model, offering the download.
+        """Make sure there is a runtime and at least one model.
 
-        The model is 44 MB and is not shipped with the app, so the first
-        time anyone uses this it has to be fetched. Asking is better than a
-        silent download on a metered connection.
+        Models are tens of megabytes and are not shipped with the app, so
+        the first time anyone uses this they have to be fetched. Asking is
+        better than a silent download on a metered connection.
         """
         if not detection.runtime_is_present():
             QMessageBox.information(
                 self, "Detection not available in this build",
                 "This build does not include the detection runtime.\n\n"
                 "Run from source with onnxruntime installed, or use the build "
-                "that has it.",
-            )
+                "that has it.")
             return False
-        if detection.model_is_present():
-            return True
 
+        missing = detection.missing_models()
+        if missing and not detection.usable_models():
+            if not self._offer_downloads(missing):
+                return False
+        elif missing:
+            self.log("%d model(s) could be downloaded but have not been."
+                     % len(missing))
+
+        if not detection.usable_models():
+            QMessageBox.information(
+                self, "No model available",
+                "There is no detection model to work with yet.")
+            return False
+        return True
+
+    def _offer_downloads(self, specs) -> bool:
+        """Ask, then fetch. Returns whether anything usable came of it."""
+        total = sum(spec.size_bytes for spec in specs) / 1048576
+        listed = "\n".join(f"  {spec.title}, {spec.licence}" for spec in specs)
         reply = QMessageBox.question(
-            self, "Download the detection model?",
-            "Detection needs a model file of about 44 MB, which is not "
-            "included in the download.\n\n"
-            "It comes from the anime_censor_detection project and is checked "
-            "against a known checksum before being kept. Fetch it now?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
-        )
+            self, "Download the detection models?",
+            f"Detection needs a model, which is not included in the download.\n\n"
+            f"{listed}\n\nThat is about {total:.0f} MB in total, and each is "
+            "checked against a known checksum before being kept. Fetch now?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply != QMessageBox.Yes:
             return False
 
-        self.log("Downloading the detection model...")
-        try:
-            path = detection.download_model()
-        except detection.DetectorUnavailable as exc:
-            QMessageBox.critical(self, "Could not get the model", str(exc))
-            return False
-        self.log(f"Model saved to {path}")
-        return True
+        for spec in specs:
+            self.log(f"Downloading {spec.title}...")
+            try:
+                path = detection.download_model(spec)
+            except detection.DetectorUnavailable as exc:
+                QMessageBox.critical(self, "Could not get a model", str(exc))
+                continue
+            self.log(f"  saved to {path}")
+        return bool(detection.usable_models())
 
     def _on_detect_done(self, result) -> None:
         assert self.session is not None
@@ -995,8 +1026,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self, "Nothing found",
                 f"Looked at {len(result.skipped)} image(s) and found nothing. "
-                "A lower confidence, or looking harder, may find more.",
-            )
+                "A lower confidence, or looking harder, may find more.")
             return
 
         reply = QMessageBox.question(
@@ -1006,8 +1036,7 @@ class MainWindow(QMainWindow):
             "They will be added as layers that start switched off, so nothing "
             "changes until you enable them. Images you have already drawn on "
             "are left alone.\n\nAdd them?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply != QMessageBox.Yes:
             self.log("Detection results discarded.")
             return
