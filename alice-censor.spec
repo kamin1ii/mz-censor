@@ -14,6 +14,11 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
+# Which bundled files survive. Kept in its own module so the rule can
+# be tested, after one of its patterns quietly matched Python's copy
+# of OpenSSL as well as Qt's.
+from build_filters import keep_binary
+
 # Two builds come out of this one file. The plain one is small and has no
 # automatic detection in it. Setting ALICE_CENSOR_DETECT=1 keeps onnxruntime
 # and numpy, which roughly triples the size, and produces a separately named
@@ -62,44 +67,6 @@ EXCLUDES = EXCLUDED_QT_MODULES + [
     # when something asks for it by name, so it never loads at runtime.
     "multiprocessing", "concurrent.futures.process",
 ]
-
-# Binaries no QtWidgets app loads, matched on filename. Kept as a
-# substring check because the version suffixes move between releases.
-EXCLUDED_BINARY_PARTS = (
-    "qt6webengine", "qt6quick", "qt6qml", "qt6multimedia", "qt63d",
-    "qt6charts", "qt6datavisualization", "qt6graphs", "qt6pdf",
-    "qt6designer", "qt6test", "qt6sql", "qt6bluetooth", "qt6nfc",
-    "qt6positioning", "qt6location", "qt6sensors", "qt6serialport",
-    "qt6remoteobjects", "qt6scxml", "qt6statemachine", "qt6websockets",
-    "qt6webchannel", "qt6texttospeech", "qt6spatialaudio", "qt6shadertools",
-    # Bundled ffmpeg, only ever used by QtMultimedia.
-    "avcodec", "avformat", "avutil", "swresample", "swscale",
-    # A 20 MB software OpenGL fallback. The widgets this app uses render
-    # through the raster engine.
-    "opengl32sw",
-    # Networking and the TLS stack behind it. Nothing here opens a socket,
-    # and libcrypto alone is 5 MB.
-    "qt6network", "libcrypto", "libssl",
-    # An on-screen keyboard for touch devices.
-    "qt6virtualkeyboard",
-    # Qt's own translations, 60 MB of .qm for languages the app has none of.
-    "translations",
-)
-
-# Qt plugin folders. Only the platform integration, image formats and
-# styles matter here.
-KEPT_PLUGIN_DIRS = ("platforms", "imageformats", "styles", "iconengines")
-
-
-def keep_binary(entry) -> bool:
-    dest = entry[0].replace("\\", "/").lower()
-    if any(part in dest for part in EXCLUDED_BINARY_PARTS):
-        return False
-    if "pyside6/plugins/" in dest or "pyside6/qt/plugins/" in dest:
-        folder = dest.split("plugins/", 1)[1].split("/", 1)[0]
-        return folder in KEPT_PLUGIN_DIRS
-    return True
-
 
 a = Analysis(
     ["main.py"],

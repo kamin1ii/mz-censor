@@ -75,6 +75,22 @@ if (-not $alive) {
 }
 Stop-Process -Id $proc.Id -Force
 
+# Beyond starting, check the exe can reach the network. Downloading the
+# detection model needs https, which needs Python's OpenSSL, which a Qt
+# exclusion once matched by name and removed. The build looked fine.
+Write-Host "==> Checking https works inside the bundle" -ForegroundColor Cyan
+& $python -c @"
+import sys
+from PyInstaller.archive.readers import CArchiveReader
+names = [str(k).replace(chr(92), '/').lower() for k in CArchiveReader(sys.argv[1]).toc.keys()]
+need = ['_ssl', 'libcrypto', 'libssl']
+missing = [n for n in need if not any(n in b and 'pyside6' not in b for b in names)]
+if missing:
+    raise SystemExit('the exe is missing ' + ', '.join(missing) + ', so https will not work')
+print('    ssl support present')
+"@ $exe
+if ($LASTEXITCODE -ne 0) { Write-Error "the exe cannot do https" }
+
 if (-not $KeepBuildDir) {
     Remove-Item -Recurse -Force (Join-Path $PSScriptRoot "build") -ErrorAction SilentlyContinue
 }
