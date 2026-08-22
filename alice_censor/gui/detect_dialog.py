@@ -15,10 +15,14 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QGroupBox,
     QLabel,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from .. import detection
@@ -99,13 +103,15 @@ class DetectDialog(QDialog):
         top.addRow(self.deep_checkbox)
 
         models_box = QGroupBox("Models to use")
-        models_form = QFormLayout(models_box)
+        models_grid = QGridLayout(models_box)
+        models_grid.setVerticalSpacing(4)
         self._model_rows = {}
         if not self._models:
-            models_form.addRow(QLabel("None downloaded yet."))
-        for spec in self._models:
-            enabled = QCheckBox("Use")
+            models_grid.addWidget(QLabel("None downloaded yet."), 0, 0, 1, 3)
+        for row, spec in enumerate(self._models):
+            enabled = QCheckBox(spec.title)
             enabled.setChecked(True)
+            enabled.setToolTip(f"{spec.note}\n{spec.licence}")
             threshold = QDoubleSpinBox()
             threshold.setRange(0.05, 0.95)
             threshold.setSingleStep(0.01)
@@ -118,22 +124,17 @@ class DetectDialog(QDialog):
                 "Lower finds more and gets more wrong. This is where the "
                 "model's own accuracy peaks."
             )
-            holder = QGroupBox(spec.title)
-            inner = QFormLayout(holder)
-            inner.addRow(enabled)
-            inner.addRow("Confidence:", threshold)
-            note = QLabel(spec.note)
-            note.setWordWrap(True)
-            note.setStyleSheet("color: gray;")
-            inner.addRow(note)
-            models_form.addRow(holder)
+            models_grid.addWidget(enabled, row, 0)
+            models_grid.addWidget(QLabel("confidence"), row, 1)
+            models_grid.addWidget(threshold, row, 2)
             self._model_rows[spec.key] = (enabled, threshold)
 
         self._kind_rows = {}
         kinds = QGroupBox("What to draw over each thing found")
-        kind_form = QFormLayout(kinds)
-        for kind in detection.KINDS:
-            enabled = QCheckBox("Include")
+        kind_grid = QGridLayout(kinds)
+        kind_grid.setVerticalSpacing(4)
+        for row, kind in enumerate(detection.KINDS):
+            enabled = QCheckBox(KIND_NAMES.get(kind, kind))
             enabled.setChecked(kind in DEFAULT_STYLES)
             kind_combo = QComboBox()
             for layer_type, text in OFFERED:
@@ -151,12 +152,10 @@ class DetectDialog(QDialog):
                 lambda _i, name=kind: self._sync_strength(name, None)
             )
 
-            holder = QGroupBox(KIND_NAMES.get(kind, kind))
-            inner = QFormLayout(holder)
-            inner.addRow(enabled)
-            inner.addRow("Censor with:", kind_combo)
-            inner.addRow("Strength:", strength)
-            kind_form.addRow(holder)
+            kind_grid.addWidget(enabled, row, 0)
+            kind_grid.addWidget(kind_combo, row, 1)
+            kind_grid.addWidget(QLabel("strength"), row, 2)
+            kind_grid.addWidget(strength, row, 3)
 
         note = QLabel(
             f"{image_count} image(s) in scope. Nothing is applied on its own: "
@@ -170,12 +169,38 @@ class DetectDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        inner_widget = QWidget()
+        inner = QVBoxLayout(inner_widget)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addLayout(top)
+        inner.addWidget(models_box)
+        inner.addWidget(kinds)
+        inner.addWidget(note)
+        inner.addStretch(1)
+
+        # Scrolled, because this has grown enough rows to run off a short
+        # screen, and a dialog whose buttons are below the bottom of the
+        # monitor cannot be used at all. The buttons stay outside it so they
+        # are always reachable.
+        scroll = QScrollArea()
+        scroll.setWidget(inner_widget)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
         layout = QVBoxLayout(self)
-        layout.addLayout(top)
-        layout.addWidget(models_box)
-        layout.addWidget(kinds)
-        layout.addWidget(note)
+        layout.addWidget(scroll, stretch=1)
         layout.addWidget(buttons)
+        self._fit_to_screen(inner_widget)
+
+    def _fit_to_screen(self, contents) -> None:
+        """Open big enough to show everything, but never taller than the screen.
+
+        Qt will happily size a dialog past the bottom of the monitor, where
+        the buttons cannot be reached and there is nothing to scroll.
+        """
+        wanted = contents.sizeHint().height() + 90
+        available = self.screen().availableGeometry().height() if self.screen() else 900
+        self.resize(self.width(), min(wanted, int(available * 0.85)))
 
     def _sync_strength(self, kind: str, params: dict | None) -> None:
         """Point the strength box at whatever the chosen layer type calls it."""

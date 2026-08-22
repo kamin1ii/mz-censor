@@ -334,3 +334,40 @@ def test_a_dialog_with_no_models_still_opens(qapp):
     dialog = DetectDialog(image_count=0, models=[])
 
     assert dialog.chosen_models() == []
+
+
+# ===== fitting on a screen
+#
+# This dialog grew a row per model and a row per kind, and Qt will happily
+# size one past the bottom of a monitor, where the buttons cannot be
+# reached and there is nothing to scroll.
+
+
+def test_the_dialog_is_never_taller_than_the_screen(qapp):
+    from alice_censor.detection import ANIME_MODEL, ERAX_MODEL
+
+    dialog = DetectDialog(image_count=3683, models=[ANIME_MODEL, ERAX_MODEL])
+    dialog.show()
+
+    available = dialog.screen().availableGeometry().height()
+    assert dialog.height() <= available, "it would hang off the bottom"
+
+
+def test_the_settings_area_scrolls(qapp):
+    from PySide6.QtWidgets import QScrollArea
+
+    dialog = DetectDialog(image_count=10, models=BOTH)
+
+    assert dialog.findChild(QScrollArea) is not None
+
+
+def test_the_buttons_are_outside_the_scrolling_part(qapp):
+    """Scrolling to reach Scan would be worse than not scrolling at all."""
+    from PySide6.QtWidgets import QDialogButtonBox, QScrollArea
+
+    dialog = DetectDialog(image_count=10, models=BOTH)
+    buttons = dialog.findChild(QDialogButtonBox)
+    scroll = dialog.findChild(QScrollArea)
+
+    assert buttons is not None and scroll is not None
+    assert not scroll.isAncestorOf(buttons)
