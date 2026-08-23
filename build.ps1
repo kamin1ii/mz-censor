@@ -68,22 +68,23 @@ if (-not $alive) {
 }
 Stop-Process -Id $proc.Id -Force
 
-# Beyond starting, check the exe still has working https. Nothing in the
-# app reaches the network today, but a Qt exclusion once matched Python's
-# OpenSSL by name and removed it, and the build looked perfectly fine. This
-# is the cheapest guard against that whole class of mistake.
-Write-Host "==> Checking https works inside the bundle" -ForegroundColor Cyan
+# Beyond starting, check no TLS stack crept back in. Nothing in the app
+# opens a socket, and OpenSSL is 4.6 MB of the download, so it is worth
+# 4.6 MB of nothing. It arrives as a dependency of Qt6Network, which is
+# thrown away, and only on a machine that has OpenSSL on its PATH. That is
+# why v0.7.0 shipped it from CI while a local build looked fine, and why
+# this check is repeated in the workflow rather than trusted here.
+Write-Host "==> Checking no OpenSSL crept into the bundle" -ForegroundColor Cyan
 & $python -c @"
 import sys
 from PyInstaller.archive.readers import CArchiveReader
 names = [str(k).replace(chr(92), '/').lower() for k in CArchiveReader(sys.argv[1]).toc.keys()]
-need = ['_ssl', 'libcrypto', 'libssl']
-missing = [n for n in need if not any(n in b and 'pyside6' not in b for b in names)]
-if missing:
-    raise SystemExit('the exe is missing ' + ', '.join(missing) + ', so https will not work')
-print('    ssl support present')
+found = sorted(n for n in names if 'libcrypto' in n or 'libssl' in n)
+if found:
+    raise SystemExit('the exe is carrying ' + ', '.join(found) + ', which nothing uses')
+print('    none, as expected')
 "@ $exe
-if ($LASTEXITCODE -ne 0) { Write-Error "the exe cannot do https" }
+if ($LASTEXITCODE -ne 0) { Write-Error "the exe is larger than it needs to be" }
 
 if (-not $KeepBuildDir) {
     Remove-Item -Recurse -Force (Join-Path $PSScriptRoot "build") -ErrorAction SilentlyContinue

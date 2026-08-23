@@ -60,8 +60,26 @@ jobs:
           $mb = (Get-Item .\dist\AliceCensor.exe).Length / 1MB
           Write-Host ("exe is {0:N1} MB" -f $mb)
           # A sudden jump means an exclusion in the spec stopped matching,
-          # usually because a Qt release renamed something.
-          if ($mb -gt 60) { throw ("exe is {0:N1} MB, far larger than expected" -f $mb) }
+          # usually because a Qt release renamed something. The ceiling was
+          # 60 MB and let a 4.6 MB regression through, so it now sits just
+          # above a normal build of about 28 MB.
+          if ($mb -gt 32) { throw ("exe is {0:N1} MB, larger than expected" -f $mb) }
+
+      - name: Check no OpenSSL crept in
+        # This runner has OpenSSL on its PATH and a development machine
+        # usually does not, so PyInstaller resolves a dependency here that
+        # it cannot resolve locally. That asymmetry shipped 2.6 MB of Qt's
+        # OpenSSL in v0.7.0 supporting a DLL that is not even in the exe.
+        shell: pwsh
+        run: |
+          python -c @"
+          from PyInstaller.archive.readers import CArchiveReader
+          names = [str(k).replace(chr(92), '/').lower() for k in CArchiveReader('dist/AliceCensor.exe').toc]
+          found = sorted(n for n in names if 'libcrypto' in n or 'libssl' in n)
+          if found:
+              raise SystemExit('the exe is carrying ' + ', '.join(found) + ', which nothing uses')
+          print('none, as expected')
+          "@
 
       - name: Write a checksum
         # The exe is unsigned, so this is the only way a downloader can

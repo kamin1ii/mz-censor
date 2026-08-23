@@ -1,9 +1,14 @@
 """Which files the exe keeps.
 
 Worth testing because getting it wrong produces a build that succeeds,
-launches, and then fails at one thing. A rule meant for Qt's copy of
-OpenSSL matched Python's too, and the only symptom was that downloading
-the detection model died with "unknown url type: https".
+launches, and then fails at one thing, or one that succeeds and is quietly
+several megabytes too big. Both have happened here, in opposite directions,
+over the same handful of OpenSSL files.
+
+The second one got past this file. A test asserted Qt's OpenSSL was dropped
+from `PySide6/libcrypto-3-x64.dll`, a path it never actually has, so the
+test passed and the exe shipped it anyway. Paths here are the ones seen in
+a real build.
 """
 
 import pytest
@@ -16,17 +21,25 @@ def entry(dest):
     return (dest, "/somewhere/on/disk", "BINARY")
 
 
-# ===== what Python needs, which is everything not Qt's
+# ===== the TLS stack, which nothing in this app has a use for
 
 
 @pytest.mark.parametrize("dest", [
-    "libcrypto-3.dll",
+    "libcrypto-3.dll",       # Python's, from its DLLs folder
     "libssl-3.dll",
-    "_ssl.pyd",
-    "_hashlib.pyd",
+    "libcrypto-3-x64.dll",   # Qt's, which lands at the root of the bundle
+    "libssl-3-x64.dll",
 ])
-def test_pythons_own_tls_is_kept(dest):
-    """Without these, ssl will not import and https does not exist."""
+def test_openssl_is_dropped_wherever_it_comes_from(dest):
+    """4.6 MB for something no code here calls. Qt's copies are the ones
+    that got through before, because they are not in a Qt folder."""
+    assert keep_binary(entry(dest)) is False
+
+
+@pytest.mark.parametrize("dest", ["_ssl.pyd", "_hashlib.pyd"])
+def test_the_stdlib_modules_themselves_are_left_alone(dest):
+    """Tiny, and hashlib falls back to Python's own sha1 without OpenSSL.
+    This is how the exe shipped for every release up to v0.7.0."""
     assert keep_binary(entry(dest)) is True
 
 
@@ -57,10 +70,11 @@ def test_qt_payload_with_no_part_in_this_app_is_dropped(dest):
     assert keep_binary(entry(dest)) is False
 
 
-def test_qts_own_openssl_is_still_dropped():
-    """The rule that caused the bug is right, in the place it belongs."""
-    assert keep_binary(entry("PySide6/libcrypto-3-x64.dll")) is False
-    assert keep_binary(entry("PySide6/libssl-3-x64.dll")) is False
+def test_a_qt_name_is_only_matched_inside_qt():
+    """The narrowing that fixed https. These names are Qt's alone, so they
+    must not reach a file of Python's that happens to be called the same."""
+    assert keep_binary(entry("PySide6/Qt6Network.dll")) is False
+    assert keep_binary(entry("translations/messages.mo")) is True
 
 
 @pytest.mark.parametrize("dest", [

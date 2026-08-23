@@ -1,6 +1,6 @@
 [project]
 name = "alice-censor"
-version = "0.7.0"
+version = "0.7.1"
 description = "Desktop app for censoring CG images extracted from AliceSoft visual novels via alice-tools."
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
