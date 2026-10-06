@@ -1,19 +1,20 @@
 [project]
-name = "alice-censor"
-version = "0.7.1"
-description = "Desktop app for censoring CG images extracted from AliceSoft visual novels via alice-tools."
+name = "mz-censor"
+version = "0.1.0"
+description = "Non-destructive image censor editor for RPG Maker MV/MZ and supported packed demos."
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
 dependencies = [
     "PySide6>=6.6",
     "Pillow>=10.0",
+    "evbunpack==0.2.4",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 
 [project.scripts]
-alice-censor = "alice_censor.gui.app:run"
+mz-censor = "rpg_censor.app:run"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -23,4 +24,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["alice_censor*"]
+include = ["alice_censor*", "rpg_censor*"]
+
+[tool.setuptools.package-data]
+rpg_censor = ["*.js"]
+alice_censor = ["assets/*.ico", "assets/*.png"]

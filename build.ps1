@@ -1,4 +1,4 @@
-# Builds dist\AliceCensor.exe and checks that it actually starts.
+# Builds dist\MZCensor.exe and checks that it actually starts.
 #
 # The check matters more than it sounds. A PyInstaller build can succeed
 # and still produce an exe that dies instantly, which is exactly what
@@ -38,17 +38,13 @@ if (-not $SkipTests) {
 # A previous copy still running holds a lock on the exe, and PyInstaller
 # reports that as a bare PermissionError from os.remove that gives no hint
 # what is wrong. Far better to say so and clear it.
-$appName = "AliceCensor"
+$appName = "MZCensor"
 
 $running = Get-Process $appName -ErrorAction SilentlyContinue
-if ($running) {
-    Write-Host "==> Closing $($running.Count) running AliceCensor process(es) holding the exe" -ForegroundColor Yellow
-    $running | Stop-Process -Force
-    Start-Sleep -Milliseconds 500
-}
+if ($running) { throw "Close MZ Censor before building so unsaved edits are not lost." }
 
 Write-Host "==> Building" -ForegroundColor Cyan
-& $python -m PyInstaller --noconfirm --clean alice-censor.spec
+& $python -m PyInstaller --noconfirm --clean mz-censor.spec
 if ($LASTEXITCODE -ne 0) { Write-Error "PyInstaller failed" }
 
 $exe = Join-Path $PSScriptRoot "dist\$appName.exe"
@@ -59,14 +55,9 @@ Write-Host "==> Verifying it launches" -ForegroundColor Cyan
 # alive in its event loop is the pass condition and exiting on its own
 # means it crashed, usually a module or DLL excluded that was needed.
 $env:QT_QPA_PLATFORM = "offscreen"
-$proc = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden
-Start-Sleep -Seconds 12
-$alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+$proc = Start-Process -FilePath $exe -ArgumentList "--smoke-test" -PassThru -Wait -WindowStyle Hidden
 Remove-Item Env:\QT_QPA_PLATFORM
-if (-not $alive) {
-    Write-Error "the exe exited on its own, so it does not work. Run it from a console to see why."
-}
-Stop-Process -Id $proc.Id -Force
+if ($proc.ExitCode -ne 0) { throw "MZ Censor startup self-test failed" }
 
 # Beyond starting, check no TLS stack crept back in. Nothing in the app
 # opens a socket, and OpenSSL is 4.6 MB of the download, so it is worth
@@ -87,7 +78,10 @@ print('    none, as expected')
 if ($LASTEXITCODE -ne 0) { Write-Error "the exe is larger than it needs to be" }
 
 if (-not $KeepBuildDir) {
-    Remove-Item -Recurse -Force (Join-Path $PSScriptRoot "build") -ErrorAction SilentlyContinue
+    $buildTarget = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "build"))
+    $expectedBuild = [IO.Path]::GetFullPath($PSScriptRoot) + [IO.Path]::DirectorySeparatorChar + "build"
+    if ($buildTarget -ne $expectedBuild) { throw "Unexpected build cleanup path" }
+    if (Test-Path -LiteralPath $buildTarget) { Remove-Item -LiteralPath $buildTarget -Recurse -Force }
 }
 
 $size = (Get-Item $exe).Length / 1MB

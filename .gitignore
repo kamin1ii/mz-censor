@@ -20,3 +20,18 @@ dist/
 
 # Crash dumps from MSYS/Git Bash tools
 *.stackdump
+
+# Local games, decrypted assets, edit projects, and inventory reports.
+*.rgcproj.json
+*.rgcproj.json.*
+*.rpgmvp
+*.png_
+game.bin
+originals/
+inventory.json
+image-audit.json
+packed-import.json
+censor-images/
+censor-overrides.json
+.rpg-censor/
+work/

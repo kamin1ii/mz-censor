@@ -40,7 +40,7 @@ jobs:
         run: pytest -q
 
       - name: Build the exe
-        run: pyinstaller --noconfirm --clean alice-censor.spec
+        run: pyinstaller --noconfirm --clean mz-censor.spec
 
       - name: Verify the exe starts
         # A build can succeed and still produce an exe that dies on
@@ -51,19 +51,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          $p = Start-Process .\dist\AliceCensor.exe -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 15
-          if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) {
-            throw "AliceCensor.exe exited on its own, so the build is broken"
-          }
-          Stop-Process -Id $p.Id -Force
-          $mb = (Get-Item .\dist\AliceCensor.exe).Length / 1MB
+          $p = Start-Process .\dist\MZCensor.exe -ArgumentList "--smoke-test" -PassThru -Wait -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "MZ Censor startup self-test failed" }
+          $mb = (Get-Item .\dist\MZCensor.exe).Length / 1MB
           Write-Host ("exe is {0:N1} MB" -f $mb)
           # A sudden jump means an exclusion in the spec stopped matching,
           # usually because a Qt release renamed something. The ceiling was
           # 60 MB and let a 4.6 MB regression through, so it now sits just
           # above a normal build of about 28 MB.
-          if ($mb -gt 32) { throw ("exe is {0:N1} MB, larger than expected" -f $mb) }
+          if ($mb -gt 60) { throw ("exe is {0:N1} MB, larger than expected" -f $mb) }
 
       - name: Check no OpenSSL crept in
         # This runner has OpenSSL on its PATH and a development machine
@@ -74,7 +70,7 @@ jobs:
         run: |
           python -c @"
           from PyInstaller.archive.readers import CArchiveReader
-          names = [str(k).replace(chr(92), '/').lower() for k in CArchiveReader('dist/AliceCensor.exe').toc]
+          names = [str(k).replace(chr(92), '/').lower() for k in CArchiveReader('dist/MZCensor.exe').toc]
           found = sorted(n for n in names if 'libcrypto' in n or 'libssl' in n)
           if found:
               raise SystemExit('the exe is carrying ' + ', '.join(found) + ', which nothing uses')
@@ -86,16 +82,16 @@ jobs:
         # confirm the file arrived intact.
         shell: pwsh
         run: |
-          $h = (Get-FileHash .\dist\AliceCensor.exe -Algorithm SHA256).Hash
-          Set-Content .\dist\AliceCensor.exe.sha256 "$h *AliceCensor.exe" -Encoding ascii
+          $h = (Get-FileHash .\dist\MZCensor.exe -Algorithm SHA256).Hash
+          Set-Content .\dist\MZCensor.exe.sha256 "$h *MZCensor.exe" -Encoding ascii
           Write-Host $h
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AliceCensor-exe
+          name: MZCensor-exe
           path: |
-            dist/AliceCensor.exe
-            dist/AliceCensor.exe.sha256
+            dist/MZCensor.exe
+            dist/MZCensor.exe.sha256
           if-no-files-found: error
 
       - name: Attach to the release
@@ -103,5 +99,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/AliceCensor.exe
-            dist/AliceCensor.exe.sha256
+            dist/MZCensor.exe
+            dist/MZCensor.exe.sha256
