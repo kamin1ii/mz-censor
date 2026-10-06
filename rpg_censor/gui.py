@@ -136,10 +136,17 @@ class MainWindow(QMainWindow):
             p = self.project
             edited = sum(bool(p.enabled_layers(name)) for name in p.assets)
             unreviewed = sum(r.status == ImageStatus.UNREVIEWED for r in p.images.values())
+            repaired = sum(bool(a.get('repairs')) for a in p.assets.values())
+            variants = sum(name.startswith('loose-variants/') for name in p.assets)
+            notes = ''
+            if repaired:
+                notes += f'\n{repaired} images had damaged color-profile metadata removed from the editor cache; original files are preserved.'
+            if variants:
+                notes += f'\n{variants} loose-variants are alternate files hidden by the original EXE; they are available for review but are not used by the game.'
             self.summary.setText(f'{p.title} · RPG Maker {p.engine}\n{len(p.assets):,} images · '
                                  f'{unreviewed:,} unreviewed · {edited:,} with enabled edits\n'
                                  f'Game: {p.game_root}\nProject: {p.project_file}\n'
-                                 'Save keeps your layers. Apply writes them to the game. Restart the game after applying.')
+                                 'Save keeps your layers. Apply writes them to the game. Restart the game after applying.' + notes)
 
     def save(self):
         if self.project:
@@ -264,6 +271,8 @@ class MainWindow(QMainWindow):
 
     def audit_done(self, report):
         text = f"{report['images']:,} images checked. {len(report['errors'])} errors.\n\n{report['scope']}"
+        if report.get('videos'):
+            text += '\n\nVideos require separate review; this editor does not censor them:\n' + '\n'.join(report['videos'])
         if report['errors']:
             text += '\n\n' + '\n'.join(report['errors'][:10])
         QMessageBox.information(self, 'Image Inventory Audit', text)

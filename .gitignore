@@ -35,3 +35,4 @@ censor-images/
 censor-overrides.json
 .rpg-censor/
 work/
+rpg_censor/runtime_files/

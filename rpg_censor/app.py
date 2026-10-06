@@ -23,6 +23,11 @@ def run():
         from evbunpack.const import EVB_MAGIC
         from .project import RpgProject
         assert EVB_MAGIC and Path(__file__).with_name('packed_boot.js').is_file()
+        assert Path(__file__).with_name('inline_boot.js').is_file()
+        if getattr(sys, 'frozen', False):
+            from hashlib import sha256
+            from .runtime import LAUNCHER_SHA256
+            assert sha256((Path(__file__).with_name('runtime_files') / 'nw.exe').read_bytes()).hexdigest() == LAUNCHER_SHA256
         if args.project:
             window.set_project(RpgProject.load(args.project))
         app.processEvents()

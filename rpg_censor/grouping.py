@@ -4,12 +4,17 @@ import re
 from alice_censor.grouping import GroupInfo
 
 # Bound H markers so 'fish1', 'sandwich', 'Flash', and 'Earth4' stay unflagged.
-DEFAULT_FLAG_PATTERN = r"(?:^|[/_\-\s])(?:[HＨ]\d{1,3}|NSFW|R18|ERO)(?=[/_\-\s.]|$)|挿入|射精|和姦|レイプ"
+DEFAULT_FLAG_PATTERN = r"(?:^|[/_\-\s])(?:[HＨ]\d{1,3}|NSFW|R18|ERO)(?=[/_\-\s.]|$)|挿入|射精|和姦|レイプ|エッチ|セクハラ|フェラ|アナル|精液|騎乗位|絶頂"
 
 
 def scene_key(name):
     path = PurePosixPath(name)
     stem = path.stem
+    # Japanese scene labels with numbered expressions or named overlay parts:
+    # 6_添い寝_01普通, 6_添い寝_赤面. Keep scene ID + label + folder intact.
+    japanese = re.fullmatch(r'(\d+_[^_]*[^\x00-\x7f][^_]*)_.+', stem)
+    if japanese:
+        return str(path.parent / japanese.group(1))
     # Named pose + numeric/expression variant: 010_Luhutu01_02komaru.
     match = re.fullmatch(r'(.+\d)_(\d{1,3}[A-Za-z0-9]*)(?:_[A-Za-z0-9]+)*', stem)
     if match:

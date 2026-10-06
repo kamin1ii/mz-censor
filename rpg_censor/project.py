@@ -3,14 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
-from io import BytesIO
 from pathlib import Path
-
-from PIL import Image
 
 from alice_censor.project import ProjectState
 from .grouping import scene_groups, scene_key
 from .engine import HEADER, decrypt_image, detect_game, image_paths, safe_path
+from .image_decode import validated_image
 
 
 @dataclass
@@ -53,6 +51,10 @@ class RpgProject(ProjectState):
 
 def import_game(selected: str | Path, workspace: str | Path, progress=lambda message: None) -> RpgProject:
     game = detect_game(selected)
+    from .enigma import has_enigma
+    if any(has_enigma(p) for p in (game.root / 'Game.exe', game.root.parent / 'Game.exe')):
+        raise ValueError('This game also has images packed in Game.exe. Use File > Import Packed EXE '
+                         'to include them in a separate playable copy.')
     ledger_path = game.root / '.rpg-censor/deployed.json'
     if ledger_path.exists():
         import json
@@ -84,15 +86,16 @@ def import_game(selected: str | Path, workspace: str | Path, progress=lambda mes
         if name in project.assets:
             raise ValueError(f"Both plain and encrypted versions exist: {name}")
         decoded = decrypt_image(raw, game.encryption_key) if encrypted else raw
-        with Image.open(BytesIO(decoded)) as image:
-            if getattr(image, 'n_frames', 1) > 1:
-                raise ValueError(f"Animated image requires manual review (not silently skipped): {relative}")
-            image.verify()
+        try:
+            decoded, repairs = validated_image(decoded)
+        except Exception as error:
+            raise ValueError(f'{relative}: {error}') from error
         target = safe_path(originals, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(decoded)
         project.assets[name] = {"source": relative, "encrypted": encrypted,
-                                "sha256": sha256(raw).hexdigest(), "original_sha256": sha256(decoded).hexdigest()}
+                                "sha256": sha256(raw).hexdigest(), "original_sha256": sha256(decoded).hexdigest(),
+                                "repairs": repairs}
         if index % 50 == 0:
             progress(f"Imported {index + 1}/{len(files)} images")
     project.sync_with_paths(project.paths(), {p: scene_key(p) for p in project.assets})

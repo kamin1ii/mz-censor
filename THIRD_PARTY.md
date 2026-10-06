@@ -15,3 +15,11 @@ the public [SecuPacker source](https://github.com/Churitoring/SecuPacker) and th
 Other dependencies: PySide6/Qt (LGPL/GPL/commercial), Pillow (HPND),
 pefile (MIT), and PyInstaller (GPL with its distribution exception).
 Their own notices and license terms remain applicable.
+
+The Windows build bundles the unmodified `nw.exe` launcher from the official
+[NW.js 0.29.0 Windows ia32 distribution](https://dl.nwjs.io/v0.29.0/nwjs-v0.29.0-win-ia32.zip).
+NW.js is MIT licensed, with Chromium and other components under their own terms.
+Its complete upstream `credits.html` accompanies the launcher in the bundle and
+is copied to `nwjs-credits.html` in imported games. `setup_runtime.py` pins both
+the archive and launcher SHA-256 checksums. Only the launcher and notices are
+bundled; the matching runtime DLLs are obtained from the user's own game copy.

@@ -12,9 +12,10 @@ Python and alice.exe are not needed. Run the executable, then:
 
 1. For a normal game, choose **File > New MV/MZ Folder Project** and select the
    game folder (or `www`) plus an empty working folder outside its content folder.
-2. For a supported Enigma-packed demo, choose **File > Import Packed EXE**,
+2. For a supported Enigma-packed game, choose **File > Import Packed EXE**,
    then select an empty folder for a playable copy and a separate empty project folder.
    Import starts the game runtime to read its virtual files. The original EXE is read only.
+   Standard Enigma imports such as MECHANICA are extracted directly without starting the original game.
 3. Use **All Images**. Double-click an image, draw censor regions, and click Save.
    Review statuses do not censor pixels; enabled layers do. Filename flags are only suggestions.
 4. Choose **Apply Censor Edits**, then restart the game. Use **Launch Game** to
@@ -30,6 +31,40 @@ images. Its default pattern avoids accidental matches in words like "sandwich".
 
 Reopen `project.rgcproj.json` to continue. The executable also accepts
 `--project "path/to/project.rgcproj.json"`.
+
+## MECHANICA
+
+Choose **Import Packed EXE** and select the game's **Game.exe**, not the update
+installer. Select two empty folders outside the original installation: one for
+the playable copy, one for the project. Folder import refuses this mixed layout
+because hundreds of images would otherwise be missed.
+
+Validated against the local RJ278019 installation (MV 1.5.1): **1,581 images**,
+including **659 packed images absent from the loose folders**, **55 differing
+loose variants**, and **one embedded image literal**. All **1,981 packed files**
+are extracted, hashed, and accounted for. The `loose-variants` category contains
+alternate loose images that the original EXE shadows. They remain available for
+review, separately grouped; the active game uses the packed versions. No variants
+are deduplicated out of the gallery.
+
+Two PNGs contain an invalid ICC color-profile checksum. Their pixel chunks are
+intact. Import removes only that defective metadata from the editor cache and
+records the repair in the audit. Apply renders a valid image; Restore recovers
+the exact original encrypted file, including its original metadata. Damaged
+pixel chunks, incomplete image data, and animated images still fail visibly.
+
+The playable copy uses a bundled clean NW.js 0.29.0 ia32 launcher after verifying
+the game runtime's DLL/snapshot hashes. This prevents the packed EXE from shadowing
+edited files. Other wrapped-host runtime versions fail explicitly until supported.
+This launcher is separate from the existing SecuPacker import path.
+The copied game reached its title screen in validation. Engine-level pixel checks
+confirmed edits to a UI image, a packed-only image, a repaired PNG, and the inline
+image. Restore reproduced each original file byte for byte.
+
+The two WebM videos are listed in the audit and are **not censored by this image
+editor**. Runtime-generated drawings are likewise outside the image-file inventory.
+Existing saves stay in the original installation; copy them to the playable copy's
+`www/save` if needed. Import excludes saves and unrelated root-level EXE installers.
 
 ## Image coverage
 
@@ -81,12 +116,15 @@ Game files, decrypted images, keys, and personal projects are never uploaded by 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python setup_runtime.py
 .venv\Scripts\python -m rpg_censor
 .venv\Scripts\python -m pytest -q
 .\build.ps1
 ```
 
 The build produces `dist/MZCensor.exe` plus a SHA-256 checksum. CI tests and builds on Windows.
+Builds fetch the pinned official NW.js archive if launcher resources are absent.
+The finished app needs no download or internet access to import MECHANICA.
 The new workflow is in `rpg_censor/`; reusable editor/gallery/rendering code remains in
 `alice_censor/` with its regression tests. The original AliceSoft workflows are preserved
 in the source history and shared package, but are not exposed by MZ Censor's UI.

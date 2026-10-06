@@ -24,6 +24,9 @@ from PyInstaller.utils.hooks import collect_submodules
 # locally it resolved and on a runner it did not.
 sys.path.insert(0, SPECPATH)
 from build_filters import keep_binary
+from setup_runtime import prepare
+
+prepare()
 
 APP_NAME = "MZCensor"
 ICON = Path("alice_censor/assets/icon.ico")
@@ -73,6 +76,9 @@ a = Analysis(
     datas=[("alice_censor/assets/icon.ico", "alice_censor/assets"),
            ("alice_censor/assets/icon.png", "alice_censor/assets"),
            ("rpg_censor/packed_boot.js", "rpg_censor"),
+           ("rpg_censor/inline_boot.js", "rpg_censor"),
+           ("rpg_censor/runtime_files/nw.exe", "rpg_censor/runtime_files"),
+           ("rpg_censor/runtime_files/credits.html", "rpg_censor/runtime_files"),
            ("LICENSE", "licenses/mz-censor"),
            ("THIRD_PARTY.md", "licenses"),
            ("licenses/evbunpack-LICENSE", "licenses")],

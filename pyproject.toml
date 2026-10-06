@@ -1,6 +1,6 @@
 [project]
 name = "mz-censor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Non-destructive image censor editor for RPG Maker MV/MZ and supported packed demos."
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"

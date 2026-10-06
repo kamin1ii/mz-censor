@@ -30,7 +30,7 @@ def audit_project(project, progress=lambda message: None):
     counts = Counter(str(Path(a['source']).parent).replace('\\', '/') for a in project.assets.values())
     packed_report = project.project_file.parent / 'packed-import.json'
     packed = json.loads(packed_report.read_text(encoding='utf-8')) if packed_report.exists() else {}
-    if project.packed and (not packed or packed.get('omitted') != 0):
+    if (project.packed or packed) and (not packed or packed.get('omitted') != 0):
         errors.append('Packed-file completeness report is missing or contains omitted entries')
     report = {
         'game': project.title, 'engine': project.engine,
@@ -38,6 +38,9 @@ def audit_project(project, progress=lambda message: None):
         'packed_entries': packed.get('packedEntries'), 'unaccounted_packed_entries': packed.get('omitted'),
         'inventory_images': len(inventoried_images), 'folders': dict(sorted(counts.items())),
         'embedded_images': sum(bool(row.get('embedded')) for row in inventory),
+        'loose_image_variants': packed.get('looseImageVariants', 0),
+        'metadata_repairs': {name: asset['repairs'] for name, asset in project.assets.items() if asset.get('repairs')},
+        'videos': [row['path'] for row in inventory if Path(row['path']).suffix.lower() in {'.webm', '.mp4', '.ogv', '.avi'}],
         'status_counts': dict(Counter(r.status.value for r in project.images.values())),
         'edited_images': sum(bool(project.enabled_layers(p)) for p in project.assets),
         'errors': errors, 'passed': not errors,

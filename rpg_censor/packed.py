@@ -5,53 +5,18 @@ the game's own runtime reads its virtual images, without distributing keys.
 """
 from __future__ import annotations
 
-import contextlib
 import json
-import mmap
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import time
 
-from .engine import safe_path
 from .project import import_game
 
 
 def unpack_exe(source: Path, destination: Path, progress=lambda message: None):
-    from evbunpack import __main__ as evb
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError("The playable-copy folder must be empty")
-    destination.mkdir(parents=True, exist_ok=True)
-    with source.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
-        offset = mapped.find(evb.EVB_MAGIC)
-        if offset < 0:
-            raise ValueError("This executable is not a supported Enigma Virtual Box package")
-        stream.seek(offset)
-        nodes = iter(list(evb.pe_external_tree(stream)))
-        main = next(nodes)
-        def visit(node, parent):
-            name = node.get('name', '')
-            if name == '%DEFAULT FOLDER%':
-                target = parent
-            else:
-                if name in ('.', '..') or any(c in name for c in '\\/:'):
-                    raise ValueError("Invalid name in executable package")
-                target = safe_path(destination, (parent / name).relative_to(destination).as_posix())
-            if node['type'] == evb.NODE_TYPE_FOLDER:
-                target.mkdir(parents=True, exist_ok=True)
-                for _ in range(node['objects_count']):
-                    visit(next(nodes), target)
-            elif node['type'] == evb.NODE_TYPE_FILE:
-                progress(f"Unpacking {target.relative_to(destination)}")
-                with open(os.devnull, 'w') as quiet, contextlib.redirect_stderr(quiet):
-                    evb.process_file_node(stream, str(target), node)
-                if target.stat().st_size != node['original_size']:
-                    raise ValueError(f"Incomplete extraction: {target.name}")
-        for _ in range(main['objects_count']):
-            visit(next(nodes), destination)
-    if not (destination / 'Game.exe').is_file():
-        raise ValueError("Package has no embedded Game.exe. This packer layout is not supported.")
+    from .enigma import extract_exe
+    return extract_exe(source, destination, progress)
 
 
 def install_bridge(root: Path):
@@ -77,8 +42,17 @@ def import_packed(source: str | Path, playable: str | Path, workspace: str | Pat
         raise ValueError("Choose an empty project folder")
     if workspace.is_relative_to(playable) or playable.is_relative_to(workspace):
         raise ValueError("The playable copy and project folder must be separate")
-    unpack_exe(source, playable, progress)
+    if playable.is_relative_to(source.parent) or source.parent.is_relative_to(playable):
+        raise ValueError("Keep the playable copy separate from the original game folder")
+    if workspace.is_relative_to(source.parent):
+        raise ValueError("Keep the project outside the original game folder")
+    entries = unpack_exe(source, playable, progress)
     root = playable / 'www'
+    if not (root / 'game.bin').is_file():
+        from .extracted import import_extracted
+        return import_extracted(source, playable, workspace, entries, progress)
+    if not (playable / 'Game.exe').is_file():
+        raise ValueError("SecuPacker package has no embedded Game.exe")
     install_bridge(root)
     # Staging is outside the playable tree: extra .bin/.dll files would change
     # the packer's environment fingerprint. No package.json changes are made.
